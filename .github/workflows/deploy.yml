@@ -1,0 +1,123 @@
+name: CineStream TV - publicacao
+
+# O repositorio e o painel: o site vai para o GitHub Pages e, ao mesmo
+# tempo, para a maquina na nuvem que roda o gateway.
+#
+# Segredos (Settings -> Secrets and variables -> Actions):
+#   VPS_HOST      o endereco da maquina (ssh root@1.2.3.4)
+#   VPS_USER      o usuario do ssh (root)
+#   VPS_SSH_KEY   a chave privada do ssh, em base64 ou no formato openssh
+#   VPS_PATH      onde o site mora la (padrao /opt/cinestream)
+#   PUBLIC_BASE   o endereco publico do site (https://tv.exemplo.com). E o
+#                 que o player usa para achar o gateway.
+#   WAKE_URL      a campainha do host, quando ele dorme
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # A cada 20 minutos: mantem a maquina acordada e confere o gateway.
+    - cron: '*/20 * * * *'
+
+concurrency:
+  group: cinestream-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: site e gateway
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: chave do ssh
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo -e "Host ${VPS_HOST}\n  User ${VPS_USER}\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null" > ~/.ssh/config
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+      - name: enviar o site
+        run: |
+          rsync -az --delete \
+            --exclude '.git' --exclude '.github' \
+            ./ "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/site/"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+
+      - name: enviar o gateway e reiniciar
+        run: |
+          rsync -az deploy/resolver.py "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/resolver.py"
+          ssh "${VPS_USER}@${VPS_HOST}" "chmod +x ${VPS_PATH}/resolver.py && sudo systemctl restart cinestream-resolver && sudo systemctl is-active cinestream-resolver"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+
+      - name: conferir
+        run: |
+          sleep 5
+          curl -sS -m 15 "http://${VPS_HOST}:8730/healthz" || true
+          echo
+          curl -sS -o /dev/null -w "site: %{http_code}\n" -m 15 "http://${VPS_HOST}:8730/site/index.html" || true
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+
+  pages:
+    name: apontar o player para o gateway
+    if: github.event_name != 'schedule' && secrets.PUBLIC_BASE != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: escrever a base do gateway
+        run: |
+          python3 - <<'PY'
+          import re, os
+          path = "js/config.js"
+          body = open(path, encoding="utf-8").read()
+          base = os.environ["PUBLIC_BASE"].strip().rstrip("/")
+          body = re.sub(r"^var CINE_API = '.*?';$",
+                        "var CINE_API = '%s';" % base, body, count=1, flags=re.M)
+          open(path, "w", encoding="utf-8").write(body)
+          print("CINE_API =", base)
+          PY
+        env:
+          PUBLIC_BASE: ${{ secrets.PUBLIC_BASE }}
+
+      - name: publicar
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add js/config.js
+          git diff --staged --quiet || git commit -m "chore: gateway em $PUBLIC_BASE"
+          git push origin HEAD:main
+        env:
+          PUBLIC_BASE: ${{ secrets.PUBLIC_BASE }}
+
+  keepalive:
+    name: manter a maquina acordada
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: bater na porta
+        run: |
+          if [ -n "${{ secrets.WAKE_URL }}" ]; then
+            curl -sS -m 20 -o /dev/null -w "campainha: %{http_code}\n" "${{ secrets.WAKE_URL }}" || true
+          fi
+          if [ -n "${{ secrets.PUBLIC_BASE }}" ]; then
+            curl -sS -m 20 -o /dev/null -w "gateway: %{http_code}\n" "${{ secrets.PUBLIC_BASE }}/healthz" || true
+          fi
+        env:
+          WAKE_URL: ${{ secrets.WAKE_URL }}
+          PUBLIC_BASE: ${{ secrets.PUBLIC_BASE }}

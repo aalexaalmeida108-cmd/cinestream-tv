@@ -298,6 +298,23 @@
       }
     }
 
+    // A gateway that is asleep. The page rings the doorbell (CINE_WAKE_URL
+    // in js/config.js) and tries the manifest again. The box wakes up and
+    // the second try is the one that finds a picture.
+    var wakeTries = 0;
+
+    function wakeGateway() {
+      if (!CINE_WAKE_URL || wakeTries >= 6) return false;
+      wakeTries = wakeTries + 1;
+      setStatus('Acordando o servidor (' + wakeTries + '/6)');
+      // An image, not a fetch: the answer is not needed, only the knock.
+      var ping = new Image();
+      var sep = CINE_WAKE_URL.indexOf('?') === -1 ? '?' : '&';
+      ping.src = CINE_WAKE_URL + sep + 't=' + (new Date()).getTime();
+      setTimeout(function () { loadSource(true); }, 5000);
+      return true;
+    }
+
     function loadSource(useWorker) {
       if (hls) {
         hls.destroy();
@@ -315,6 +332,7 @@
         // gateway is. CINE_API in js/config.js is the piece that says.
         if (data.fatal && (data.details === 'manifestLoadError' ||
             data.details === 'manifestParsingError')) {
+          if (wakeGateway()) return;
           setStatus('Gateway nao configurado neste endereco');
           return;
         }

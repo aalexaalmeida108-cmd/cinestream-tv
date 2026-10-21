@@ -1,0 +1,26 @@
+[Unit]
+Description=CineStream gateway (TV site + MPEG-TS manifests)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cinestream
+Group=cinestream
+EnvironmentFile=/etc/cinestream/env
+WorkingDirectory=/opt/cinestream
+ExecStart=/usr/bin/python3 /opt/cinestream/resolver.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/cinestream/resolver.log
+StandardError=append:/var/log/cinestream/resolver.log
+
+# The gateway only fetches from the internet and serves its own files.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/cinestream/cache /opt/cinestream/posters /var/log/cinestream
+
+[Install]
+WantedBy=multi-user.target

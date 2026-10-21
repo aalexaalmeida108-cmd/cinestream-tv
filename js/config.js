@@ -17,8 +17,13 @@
 // CINE_CDN_POSTERS  host de imagens, usado quando a capa nao esta no bundle.
 //
 // CINE_CATALOG_URL  o catalogo publico, no botao verde do controle.
+//
+// CINE_WAKE_URL     campainha do gateway: se o host na nuvem estiver
+//                   dormindo, o player bate na porta e tenta o manifesto de
+//                   novo. Vazio = nao tem campainha.
 
 var CINE_API = '';
 var CINE_POSTER_MODE = 'bundle';
 var CINE_CDN_POSTERS = 'https://image.tmdb.org/t/p/w342/';
 var CINE_CATALOG_URL = 'https://aalexaalmeida108-cmd.github.io/cinestream-br-v2/';
+var CINE_WAKE_URL = '';
