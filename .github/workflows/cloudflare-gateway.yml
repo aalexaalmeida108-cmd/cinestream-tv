@@ -1,0 +1,100 @@
+name: CineStream TV - gateway na Cloudflare
+
+# A imagem do gateway e construida aqui (o runner tem Docker), enviada para
+# o registro da Cloudflare e publicada como Worker + Container. No fim, o
+# site no GitHub Pages e apontado para o endereco do gateway.
+#
+# Segredos (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   token da API da Cloudflare
+#   CLOUDFLARE_ACCOUNT_ID  id da conta
+#
+# O plano Workers Paid (US$ 5/mes) e obrigatorio para Containers.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/cloudflare/**"
+      - "deploy/resolver.py"
+      - "Dockerfile"
+
+concurrency:
+  group: cinestream-cloudflare
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  gateway:
+    name: gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Credenciais
+        run: |
+          echo "CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" >> "$GITHUB_ENV"
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Faltam CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID nos segredos do repositorio."
+            exit 1
+          fi
+
+      - name: Build da imagem
+        run: |
+          docker build \
+            -t "registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/cinestream-gateway:latest" \
+            -f deploy/cloudflare/Dockerfile .
+          docker push "registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/cinestream-gateway:latest"
+
+      - name: Publicar o Worker
+        run: |
+          sed -i "s|__ACCOUNT_ID__|$CLOUDFLARE_ACCOUNT_ID|g" deploy/cloudflare/wrangler.toml
+          cd deploy/cloudflare
+          npm install --no-audit --no-fund @cloudflare/containers
+          npx wrangler@4 deploy
+
+      - name: Aponhar o player para o gateway
+        run: |
+          SUBDOMAIN=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('result') or '')")
+          if [ -z "$SUBDOMAIN" ]; then
+            echo "::error::A conta nao tem subdominio de workers."
+            exit 1
+          fi
+          BASE="https://cinestream-gateway.$SUBDOMAIN.workers.dev"
+          echo "gateway: $BASE"
+          python3 - "$BASE" <<'PY'
+          import re, sys
+          base = sys.argv[1].rstrip("/")
+          path = "js/config.js"
+          body = open(path, encoding="utf-8").read()
+          body = re.sub(r"^var CINE_API = '.*?';$",
+                        "var CINE_API = '%s';" % base, body, count=1, flags=re.M)
+          open(path, "w", encoding="utf-8").write(body)
+          print("CINE_API =", base)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add js/config.js
+          git diff --staged --quiet || git commit -m "chore: gateway em $BASE"
+          git push origin HEAD:main
+
+      - name: Conferir
+        run: |
+          sleep 45
+          SUBDOMAIN=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('result') or '')")
+          BASE="https://cinestream-gateway.$SUBDOMAIN.workers.dev"
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "$BASE/healthz" || echo 000)
+            echo "tentativa $i: $CODE"
+            [ "$CODE" = "200" ] && break
+            sleep 20
+          done

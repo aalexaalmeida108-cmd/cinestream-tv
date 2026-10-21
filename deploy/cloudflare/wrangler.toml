@@ -1,0 +1,34 @@
+# CineStream TV - gateway na Cloudflare (Worker + Container).
+#
+# A Action constroi a imagem, sobe para o registro da Cloudflare e publica
+# este Worker. O __ACCOUNT_ID__ e trocado pelo id da conta no momento do
+# deploy.
+#
+#   npx wrangler deploy --config deploy/cloudflare/wrangler.toml
+#
+# O plano Workers Paid (US$ 5/mes) e obrigatorio: Containers nao roda no
+# plano gratuito. O container cobra por CPU ativa a cada 10 ms e por
+# memoria/disco enquanto esta acordado, e dorme sozinho depois de 10
+# minutos sem pedido.
+
+name = "cinestream-gateway"
+main = "worker.js"
+compatibility_date = "2026-10-20"
+compatibility_flags = ["nodejs_compat"]
+
+[[containers]]
+class_name = "Gateway"
+image = "registry.cloudflare.com/__ACCOUNT_ID__/cinestream-gateway:latest"
+instance_type = "basic"
+max_instances = 1
+
+[[durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "Gateway"
+
+[exports.Gateway]
+type = "durable-object"
+storage = "sqlite"
+
+[observability]
+enabled = true

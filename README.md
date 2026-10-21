@@ -104,6 +104,44 @@ O codespace dorme depois de 30 minutos parado e gasta das 120 core-horas
 mensais da conta gratuita. Para TV de uso diario, uma maquina de 4 EUR e
 melhor negocio.
 
+### O caminho Cloudflare (a mesma conta do site da Bia)
+
+A Cloudflare **nao vende VPS** - nunca vendeu. O que ela tem desde 13 de
+abril de 2026 e o **Cloudflare Containers**: imagem Linux de verdade (OCI),
+com ffmpeg dentro, chamada por um Worker, cobrada por CPU ativa a cada
+10 ms, dormindo sozinha quando ninguem assiste.
+
+```
+site    -> Pages (a mesma conta do site da Bia)      gratis
+gateway -> Worker + Container                        US$ 5/mes do Workers Paid
+```
+
+O container roda o `resolver.py` de verdade (o mesmo da caixa), com ffmpeg
+instalado. O Worker e so a porta: recebe o player do Pages, que e outra
+origem, e entrega no container. Um container so, com nome fixo, porque a
+sessao do titulo (playlist assinada + segmentos remuxados) vive na memoria
+do container e o manifesto e os segmentos precisam cair na mesma instancia.
+
+Custo medido do lado do consumo: o remux custa ~20 ms por segmento, um
+filme de 2 h sao ~7.200 segmentos, ou seja ~144 s de CPU por filme - quase
+de centavos. O que pesa e o Workers Paid (US$ 5/mes) e a memoria cobrada
+enquanto o container esta acordado (ele dorme 10 min depois do ultimo
+pedido). Total: US$ 5-6/mes, contra os US$ 5,93/mes de um Hetzner CX23 e
+contra os US$ 0 de um Oracle Always Free.
+
+Para uso diario de TV, Oracle/VPS sai mais barato e e mais simples. Para
+"assiste de vez em quando", a Cloudflare e o mesmo preco e zero manutencao.
+O site da Bia ja esta em Pages nessa conta - o site da TV entra do lado.
+
+```bash
+# a Action constroi a imagem, publica o Worker e aponta o site para ele
+# (so precisa dos segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID)
+```
+
+Arquivos: `deploy/cloudflare/Dockerfile`, `deploy/cloudflare/worker.js`,
+`deploy/cloudflare/wrangler.toml` e
+`.github/workflows/cloudflare-gateway.yml`.
+
 ### O caminho de verdade (maquina com IP publico)
 
 * **Oracle Cloud Always Free** - 1 VM ARM de graca, 24/7, IP publico.
