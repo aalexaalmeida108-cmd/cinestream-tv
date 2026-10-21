@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineStream TV</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/tv.css">
+</head>
+<body>
+  <header class="tv-header">
+    <span class="tv-logo">&#9654;</span>
+    <span class="tv-brand">CINE<span>STREAM</span></span>
+  </header>
+
+  <div class="tv-search">
+    <input id="search" type="text" placeholder="Pesquisar titulo..." autocomplete="off" spellcheck="false">
+  </div>
+
+  <div class="tv-tabs">
+    <button type="button" class="on" data-cat="movies">Filmes</button>
+    <button type="button" data-cat="series">Series</button>
+    <button type="button" data-cat="animes">Animes</button>
+    <button type="button" data-filter="new">Lancamentos</button>
+  </div>
+
+  <div class="tv-count" id="count"></div>
+
+  <div class="tv-grid" id="grid"><div class="tv-status">Carregando catalogo...</div></div>
+
+  <div class="tv-hint">
+    <span><b>[OK]</b> assistir</span>
+    <span><b>[VERMELHO]</b> voltar</span>
+    <span><b>[DIREITA/ESQUERDA]</b> navegar</span>
+    <span><b>[AMARELO]</b> pesquisar</span>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var grid = document.getElementById('grid');
+    var countEl = document.getElementById('count');
+    var searchEl = document.getElementById('search');
+    var buttons = document.querySelectorAll('.tv-tabs button');
+    var current = 'movies';
+    var onlyNew = false;
+    var query = '';
+    var cache = {};
+    var pageSize = 60;
+    var shown = 0;
+
+    // The public site counts a title as a new release from 2025 on. Same rule
+    // here, so the two agree on what "lancamentos" means.
+    var NEW_RELEASE_YEAR = 2025;
+
+    function esc(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Accents are folded away so "acao" finds "Acao" and "Acao" finds "Acao".
+    function normalize(value) {
+      var text = String(value == null ? '' : value);
+      if (text.normalize) {
+        text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      }
+      return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/^\s+|\s+$/g, '');
+    }
+
+    // The covers travel with the site when it runs from the cloud, so the
+    // television opens no second connection per card. On the box the covers
+    // are served by the resolver under /poster/. A cover that is not in the
+    // bundle is fetched from the image host instead - see the error handler
+    // further down.
+    function posterUrl(path) {
+      if (!path) return 'assets/placeholder.svg';
+      var name = String(path).replace(/^\//, '');
+      if (!name) return 'assets/placeholder.svg';
+      if (CINE_POSTER_MODE === 'api') return CINE_API + '/poster/' + name;
+      return 'posters/' + name;
+    }
+
+    // The error of an <img> does not bubble, so it is caught in the capture
+    // phase. The cover comes from the image host when the bundle does not
+    // carry it.
+    window.addEventListener('error', function (event) {
+      var node = event.target;
+      if (!node || node.tagName !== 'IMG') return;
+      if (node.getAttribute('data-cdn') === '1') return;
+      node.setAttribute('data-cdn', '1');
+      var source = String(node.getAttribute('src') || '');
+      var name = source.split('/').pop();
+      if (!name) return;
+      node.src = CINE_CDN_POSTERS + name;
+    }, true);
+
+    function searchText(item) {
+      if (item._search) return item._search;
+      item._search = normalize([item.t, item.tp].join(' '));
+      return item._search;
+    }
+
+    function visibleItems(items) {
+      var list = items;
+      if (onlyNew) {
+        list = [];
+        for (var i = 0; i < items.length; i++) {
+          if ((Number(items[i].y) || 0) >= NEW_RELEASE_YEAR) list.push(items[i]);
+        }
+        // Newest first, then by votes so the popular ones of a year come first.
+        list.sort(function (a, b) {
+          return ((b.y || 0) - (a.y || 0)) || ((b.v || 0) - (a.v || 0));
+        });
+      }
+      if (!query) return list;
+      var tokens = query.split(' ').filter(Boolean);
+      var out = [];
+      for (var j = 0; j < list.length; j++) {
+        var text = searchText(list[j]);
+        var match = true;
+        for (var t = 0; t < tokens.length; t++) {
+          if (text.indexOf(tokens[t]) === -1) { match = false; break; }
+        }
+        if (match) out.push(list[j]);
+      }
+      return out;
+    }
+
+    function cardHtml(item) {
+      var tm = item.tm || '';
+      if (!tm) return '';
+      var title = item.tp || item.t || 'Sem titulo';
+      var year = item.y || '';
+      // The kind is spelled the way the public site spells it: movie,
+      // series or anime. A type the site does not know falls back to
+      // "movie" there, and a series sent as a movie never resolves.
+      var kind = item.ty === 'movie' ? 'movie' : (item.ty || 'series');
+      var href = 'player.html?ty=' + kind + '&title=' + encodeURIComponent(title) +
+        '&tm=' + encodeURIComponent(tm) +
+        (kind === 'movie' ? '' : '&se=1&ep=1');
+      return '<a class="tv-card" href="' + href + '">' +
+        '<img src="' + esc(posterUrl(item.p)) + '" alt="">' +
+        '<div class="t">' + esc(title) + '</div>' +
+        '<div class="y">' + esc(year) + '</div>' +
+        '</a>';
+    }
+
+    // One page of covers at a time. Seventeen thousand cards in the DOM make
+    // the page crawl on a television.
+    //
+    // Returns the index of the first card it just drew, so the caller can
+    // put the focus on it.
+    function render(reset) {
+      var items = visibleItems(cache[current] || []);
+      if (reset) {
+        shown = 0;
+        grid.innerHTML = '';
+      }
+
+      if (!items.length) {
+        grid.innerHTML = '<div class="tv-status">' +
+          (query ? 'Nada encontrado para "' + esc(query) + '".' : 'Nada encontrado.') +
+          '</div>';
+        countEl.textContent = '0 resultados';
+        removeMoreButton();
+        return 0;
+      }
+
+      var from = shown;
+      var limit = Math.min(items.length, from + pageSize);
+      var html = '';
+      for (var i = from; i < limit; i++) html += cardHtml(items[i]);
+      grid.insertAdjacentHTML('beforeend', html);
+      shown = limit;
+
+      countEl.textContent = items.length + (items.length === 1 ? ' resultado' : ' resultados');
+
+      // The "load more" button is rebuilt every time, so switching category
+      // does not leave a stack of them behind.
+      removeMoreButton();
+      if (shown < items.length) {
+        var more = document.createElement('button');
+        more.id = 'moreButton';
+        more.className = 'tv-more';
+        more.textContent = 'Carregar mais (' + (items.length - shown) + ')';
+        more.addEventListener('click', function () {
+          var first = render(false);
+          focusCard(first);
+        });
+        grid.parentNode.appendChild(more);
+      }
+
+      if (reset) focusCard(0);
+      return from;
+    }
+
+    function removeMoreButton() {
+      var old = document.getElementById('moreButton');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+    }
+
+    function focusCard(index) {
+      var cards = grid.querySelectorAll('.tv-card');
+      if (!cards.length) return;
+      if (index < 0 || index >= cards.length) index = 0;
+      cards[index].focus();
+    }
+
+    function load(cat) {
+      current = cat;
+      for (var i = 0; i < buttons.length; i++) {
+        var isCat = buttons[i].getAttribute('data-cat') === cat;
+        var isNew = buttons[i].getAttribute('data-filter') === 'new';
+        buttons[i].className = (isCat && !onlyNew) || (isNew && onlyNew) ? 'on' : '';
+      }
+      grid.innerHTML = '<div class="tv-status">Carregando ' + cat + '...</div>';
+      countEl.textContent = '';
+      shown = 0;
+      if (cache[cat]) {
+        render(true);
+        return;
+      }
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'data/' + cat + '.json', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status !== 200) {
+          grid.innerHTML = '<div class="tv-status">Erro ao carregar o catalogo (' + xhr.status + ').</div>';
+          return;
+        }
+        var items;
+        try {
+          items = (JSON.parse(xhr.responseText).items || []);
+        } catch (err) {
+          grid.innerHTML = '<div class="tv-status">Erro ao processar o catalogo.</div>';
+          return;
+        }
+        cache[cat] = items;
+        render(true);
+      };
+      xhr.send();
+    }
+
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].addEventListener('click', function (e) {
+        var button = e.currentTarget;
+        if (button.getAttribute('data-filter') === 'new') {
+          onlyNew = !onlyNew;
+          load(current);
+          return;
+        }
+        onlyNew = false;
+        load(button.getAttribute('data-cat'));
+      });
+    }
+
+    // The search waits for a pause in typing. On a remote control the keys
+    // arrive one at a time, and filtering seventeen thousand items on every
+    // keystroke would make the page stutter.
+    var searchTimer = null;
+    searchEl.addEventListener('input', function () {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () {
+        query = normalize(searchEl.value);
+        if (!cache[current]) load(current);
+        else render(true);
+      }, 350);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      var key = e.keyCode || e.which;
+      if (key === 403 || key === 461 || key === 27) {   // Vermelho / Back
+        if (query) {
+          query = '';
+          searchEl.value = '';
+          render(true);
+        } else {
+          window.location.reload();
+        }
+        return;
+      }
+      if (key === 404) {                                // Verde
+        window.location.href = CINE_CATALOG_URL;
+        return;
+      }
+      if (key === 405) {                                // Amarelo: pesquisar
+        searchEl.focus();
+        searchEl.select();
+        return;
+      }
+      if (key === 13) {                                 // OK
+        var first = grid.querySelector('.tv-card');
+        if (first) first.click();
+        return;
+      }
+      if (key !== 37 && key !== 39) return;
+
+      var cards = grid.querySelectorAll('.tv-card');
+      if (!cards.length) return;
+      var index = -1;
+      for (var c = 0; c < cards.length; c++) {
+        if (cards[c] === document.activeElement) { index = c; break; }
+      }
+      var next = index + (key === 39 ? 1 : -1);
+      if (next < 0) next = 0;
+      if (next >= cards.length) next = cards.length - 1;
+      cards[next].focus();
+    });
+
+    load('movies');
+  })();
+  </script>
+</body>
+</html>

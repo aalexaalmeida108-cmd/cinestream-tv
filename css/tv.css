@@ -1,0 +1,586 @@
+/* CineStream TV - stylesheet for the browser on the television.
+ *
+ * That browser is Chrome 47. It predates CSS grid (Chrome 57), the flexbox
+ * gap property (84), CSS custom properties (49), min() and clamp() (79),
+ * aspect-ratio (88), position:sticky (56) and backdrop-filter (76).
+ *
+ * Everything below stays inside what that engine understands: flexbox with
+ * margins for the spacing, literal colours, and no variables. The public
+ * site's own stylesheet leans on the newer features heavily, so this file
+ * does not borrow from it.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0b0d10;
+  color: #f3f6fa;
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: #4f8cff;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+}
+
+/* Header */
+
+.tv-header {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 14px 20px;
+  background: #10141a;
+  border-bottom: 1px solid #222a35;
+}
+
+.tv-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #2f6fed;
+  margin-right: 14px;
+  text-align: center;
+  line-height: 38px;
+  font-size: 18px;
+  color: #fff;
+}
+
+.tv-brand {
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
+.tv-brand span {
+  color: #4f8cff;
+}
+
+/* Search */
+
+.tv-search {
+  padding: 16px 20px 6px;
+}
+
+.tv-search input {
+  width: 100%;
+  height: 50px;
+  padding: 0 20px;
+  font-size: 19px;
+  color: #fff;
+  background: #141a22;
+  border: 2px solid #2a3542;
+  border-radius: 25px;
+  outline: none;
+}
+
+.tv-search input:focus {
+  border-color: #4f8cff;
+}
+
+.tv-search input::placeholder {
+  color: #6b7a8c;
+}
+
+/* Tabs and chips */
+
+.tv-tabs {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  padding: 10px 20px 0;
+}
+
+.tv-tabs button {
+  margin: 0 8px 8px 0;
+  padding: 12px 26px;
+  font-size: 17px;
+  color: #fff;
+  background: #1a222c;
+  border: 2px solid #33404f;
+  border-radius: 5px;
+}
+
+.tv-tabs button.on {
+  background: #e50914;
+  border-color: #ff4a52;
+}
+
+.tv-chips {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  padding: 2px 20px 0;
+}
+
+.tv-chips button {
+  margin: 0 7px 7px 0;
+  padding: 8px 15px;
+  font-size: 15px;
+  font-weight: bold;
+  color: #b9c6d6;
+  background: #141a22;
+  border: 1px solid #2a3542;
+  border-radius: 16px;
+}
+
+.tv-chips button.on {
+  color: #fff;
+  background: #1d3352;
+  border-color: #4f8cff;
+}
+
+.tv-count {
+  padding: 4px 20px 10px;
+  font-size: 15px;
+  color: #93a1b1;
+}
+
+/* Grid.
+ *
+ * A percentage width on a flex item replaces grid-template-columns, and
+ * margins replace the gap. Six titles on a row on a television is about
+ * right: the covers stay large enough to read and still fill the screen.
+ */
+
+.tv-grid {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  padding: 0 14px 100px;
+}
+
+.tv-card {
+  width: 16.666%;
+  padding: 0 6px 12px;
+  margin: 0;
+  color: inherit;
+  background: #141a22;
+  border: 2px solid #232d3a;
+  border-radius: 6px;
+  overflow: hidden;
+  display: block;
+}
+
+.tv-card:hover, .tv-card:focus {
+  border-color: #e50914;
+  outline: none;
+}
+
+.tv-card img {
+  display: block;
+  width: 100%;
+  height: 250px;
+  background: #0d1116;
+  object-fit: cover;
+}
+
+.tv-card .t {
+  padding: 9px 10px 3px;
+  font-size: 15px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-card .y {
+  padding: 0 10px 10px;
+  font-size: 13px;
+  color: #7d8b9c;
+}
+
+.tv-more {
+  display: block;
+  margin: 0 auto 30px;
+  padding: 13px 30px;
+  font-size: 17px;
+  font-weight: bold;
+  color: #fff;
+  background: #1d3352;
+  border: 1px solid #33404f;
+  border-radius: 25px;
+}
+
+.tv-more:hover, .tv-more:focus {
+  background: #2f6fed;
+  outline: none;
+}
+
+.tv-status {
+  padding: 34px 20px;
+  font-size: 18px;
+  color: #93a1b1;
+}
+
+/* The hint bar sits over the bottom of the page. */
+
+.tv-hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  font-size: 15px;
+  color: #93a1b1;
+  background: #0a0c0f;
+  border-top: 1px solid #222a35;
+}
+
+.tv-hint span {
+  margin-right: 22px;
+}
+
+.tv-hint b {
+  color: #fff;
+}
+
+/* Player
+ *
+ * The picture fills the screen and the controls sit over it. While the video
+ * runs, both the controls and the mouse pointer are hidden, so nothing sits
+ * on top of the picture. Any key or mouse movement brings them back for a
+ * few seconds.
+ */
+
+.tv-player {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+.tv-player video {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+
+.tv-overlay {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  background: #000;
+}
+
+.tv-overlay h1 {
+  margin: 0 0 8px;
+  padding: 0 20px;
+  font-size: 30px;
+  text-align: center;
+}
+
+.tv-overlay p {
+  margin: 0 0 26px;
+  color: #93a1b1;
+  font-size: 16px;
+}
+
+.tv-play {
+  padding: 16px 44px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  background: #e50914;
+  border: none;
+  border-radius: 6px;
+}
+
+.tv-play:hover, .tv-play:focus {
+  background: #ff1e2a;
+  outline: 3px solid #fff;
+}
+
+/* The control bar and the episode list. Hidden while the video plays. */
+
+.tv-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 12px 20px;
+  background: #0a0c0f;
+  border-top: 1px solid #222a35;
+  opacity: 1;
+}
+
+/* The playback controls: a progress bar over the picture, and the row of
+ * buttons under it. The bar is the way to move through the title, so it is
+ * the widest thing on the screen. */
+
+.tv-progress {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  margin: 0 0 12px;
+  cursor: pointer;
+}
+
+.tv-progress-track {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 100%;
+  height: 6px;
+  background: #2a3542;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.tv-progress-buffered {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  background: #46586e;
+}
+
+.tv-progress-played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  background: #e50914;
+}
+
+.tv-progress-handle {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  background: #fff;
+  border-radius: 9px;
+  box-shadow: 0 0 8px #000;
+}
+
+.tv-progress:focus {
+  outline: none;
+}
+
+.tv-progress:focus .tv-progress-handle {
+  background: #4f8cff;
+}
+
+.tv-time {
+  font-size: 15px;
+  color: #93a1b1;
+  margin-right: 18px;
+  white-space: nowrap;
+}
+
+.tv-playpause {
+  width: 44px;
+  height: 44px;
+  margin-right: 14px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 44px;
+  text-align: center;
+  color: #fff;
+  background: #1a222c;
+  border: 1px solid #33404f;
+  border-radius: 5px;
+}
+
+.tv-playpause:hover, .tv-playpause:focus {
+  background: #2f6fed;
+  outline: none;
+}
+
+.tv-volume {
+  font-size: 15px;
+  color: #93a1b1;
+  margin-right: 18px;
+  white-space: nowrap;
+}
+
+/* The state of the picture, shown in the middle while paused. */
+
+.tv-osd {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 25;
+  display: none;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  text-align: center;
+  color: #fff;
+  font-size: 120px;
+  text-shadow: 0 4px 24px #000;
+}
+
+body.tv-paused .tv-osd {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+}
+
+body.tv-paused .tv-osd span {
+  display: block;
+}
+
+/* The volume level, shown for a moment when it changes. */
+
+.tv-volume-osd {
+  position: fixed;
+  right: 30px;
+  bottom: 120px;
+  z-index: 26;
+  display: none;
+  padding: 12px 18px;
+  font-size: 17px;
+  color: #fff;
+  background: #0a0c0f;
+  border: 1px solid #33404f;
+  border-radius: 6px;
+}
+
+body.tv-volume-osd-on .tv-volume-osd {
+  display: block;
+}
+
+.tv-bar a, .tv-bar button {
+  margin-right: 12px;
+  padding: 8px 16px;
+  font-size: 15px;
+  color: #fff;
+  background: #1a222c;
+  border: 1px solid #33404f;
+  border-radius: 5px;
+}
+
+.tv-bar .tv-status {
+  padding: 0;
+  font-size: 15px;
+}
+
+/* The episode list. It opens over the picture, so it stays short and
+ * scrolls instead of filling the screen with titles. */
+
+.tv-episodes {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 56px;
+  z-index: 29;
+  max-height: 40%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 20px;
+  background: #0a0c0f;
+  border-top: 1px solid #222a35;
+}
+
+.tv-episodes a {
+  display: inline-block;
+  margin: 0 7px 7px 0;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #dbe4ee;
+  background: #1a222c;
+  border: 1px solid #2a3542;
+  border-radius: 5px;
+}
+
+.tv-episodes a.current {
+  color: #fff;
+  background: #e50914;
+  border-color: #ff4a52;
+}
+
+/* Playing state: the picture is left alone. */
+
+body.tv-playing {
+  cursor: none;
+}
+
+body.tv-playing .tv-bar,
+body.tv-playing .tv-episodes {
+  opacity: 0;
+  visibility: hidden;
+}
+
+body.tv-controls .tv-bar,
+body.tv-controls .tv-episodes,
+body.tv-paused .tv-bar,
+body.tv-paused .tv-episodes {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* A paused video keeps the controls out, otherwise there would be no way
+ * to press play again. */
+
+body.tv-paused {
+  cursor: default;
+}
+
+body.tv-controls {
+  cursor: default;
+}

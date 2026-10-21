@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Assistir — CineStream TV</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/tv.css">
+</head>
+<body>
+  <div class="tv-player">
+    <!-- No native controls. The browser's own control bar grabs the click
+         on the picture and pauses the video by itself, and on a television
+         it is drawn with a mouse in mind. The bar below is the one that
+         works with a remote. -->
+    <video id="player" playsinline></video>
+  </div>
+
+  <div class="tv-overlay" id="overlay">
+    <h1 id="title">Carregando...</h1>
+    <p id="subtitle"></p>
+    <button class="tv-play" id="playBtn">&#9654; CLIQUE PARA ASSISTIR</button>
+  </div>
+
+  <div class="tv-osd" id="osd"><span>&#10073;&#10073;</span></div>
+
+  <div class="tv-volume-osd" id="volumeOsd">Volume 100%</div>
+
+  <div class="tv-episodes" id="episodePanel" hidden></div>
+
+  <div class="tv-bar" id="bar">
+    <div class="tv-progress" id="progress" tabindex="0" role="slider"
+         aria-label="Progresso do video" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="tv-progress-track">
+        <div class="tv-progress-buffered" id="bufferedBar"></div>
+        <div class="tv-progress-played" id="playedBar"></div>
+      </div>
+      <div class="tv-progress-handle" id="progressHandle"></div>
+    </div>
+    <div>
+      <button class="tv-playpause" id="playPause" title="Pausar">&#10073;&#10073;</button>
+      <span class="tv-time" id="time">00:00 / 00:00</span>
+      <span class="tv-volume" id="volumeLabel">Volume 100%</span>
+      <a href="./" id="backLink">&larr; Catalogo</a>
+      <a href="#" id="nextEpisode" hidden>Proximo episodio</a>
+      <a href="#" id="episodesToggle" hidden>Episodios</a>
+      <span class="tv-status" id="status"></span>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/hls.min.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var params = {};
+    var raw = window.location.search.replace(/^\?/, '');
+    if (raw) {
+      var pairs = raw.split('&');
+      for (var i = 0; i < pairs.length; i++) {
+        if (!pairs[i]) continue;
+        var kv = pairs[i].split('=');
+        params[decodeURIComponent(kv[0])] = decodeURIComponent((kv[1] || '').replace(/\+/g, ' '));
+      }
+    }
+
+    var video = document.getElementById('player');
+    var overlay = document.getElementById('overlay');
+    var titleEl = document.getElementById('title');
+    var subtitleEl = document.getElementById('subtitle');
+    var statusEl = document.getElementById('status');
+    var episodePanel = document.getElementById('episodePanel');
+    var nextButton = document.getElementById('nextEpisode');
+    var episodesToggle = document.getElementById('episodesToggle');
+    var playPause = document.getElementById('playPause');
+    var progress = document.getElementById('progress');
+    var playedBar = document.getElementById('playedBar');
+    var bufferedBar = document.getElementById('bufferedBar');
+    var progressHandle = document.getElementById('progressHandle');
+    var timeEl = document.getElementById('time');
+    var volumeLabel = document.getElementById('volumeLabel');
+    var volumeOsd = document.getElementById('volumeOsd');
+
+    var type = params.ty || 'movie';
+    var tm = params.tm || params.im || '';
+    var season = params.se || '1';
+    var episode = params.ep || '1';
+    var title = params.title || 'Assistir';
+
+    document.title = 'Assistir - ' + title;
+    titleEl.textContent = title;
+    subtitleEl.textContent = type === 'movie' ? 'Filme' : ('Temporada ' + season + ' - Episodio ' + episode);
+
+    // The gateway on the LAN serves MPEG-TS. The public site hands the same
+    // titles out as fragmented MP4, which the browser on the TV cannot
+    // decode: it skips the init segment and never shows a frame.
+    //
+    // The URL is relative on purpose. This page is served by the same box
+    // that serves the gateway, so a relative URL keeps the request on one
+    // origin. An absolute URL to the LAN address is a cross-origin request
+    // and the browser refuses it - the manifest never loads and hls.js
+    // reports a manifestLoadError.
+    //
+    // CINE_API is empty when the page and the gateway are served by the same
+    // host, which is the normal case. It is set to the public address of the
+    // gateway when the page runs from the cloud and the gateway lives
+    // somewhere else.
+    var sourceUrl = CINE_API + (type === 'movie'
+      ? '/tv/movie/' + encodeURIComponent(tm)
+      : '/tv/tv/' + encodeURIComponent(tm) + '/' + season + '/' + episode);
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    // The controls and the mouse pointer are hidden while the video plays,
+    // so nothing sits on top of the picture. Any key or mouse movement
+    // brings them back for a few seconds.
+    var hideTimer = null;
+    var volumeTimer = null;
+
+    function showControls() {
+      // A paused video keeps its state marked, so the pause symbol stays in
+      // the middle of the picture.
+      var base = video.paused ? 'tv-paused' : 'tv-controls';
+      var volumeFlag = '';
+      if (document.body.className.indexOf('tv-volume-osd-on') !== -1) {
+        volumeFlag = ' tv-volume-osd-on';
+      }
+      document.body.className = base + volumeFlag;
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () {
+        if (!video.paused) document.body.className = 'tv-playing';
+      }, 3500);
+    }
+
+    function hideControls() {
+      if (video.paused) return;
+      document.body.className = 'tv-playing';
+    }
+
+    // The progress bar.
+
+    function formatTime(seconds) {
+      if (!seconds || seconds < 0 || isNaN(seconds)) return '00:00';
+      var whole = Math.floor(seconds);
+      var hours = Math.floor(whole / 3600);
+      var minutes = Math.floor((whole % 3600) / 60);
+      var rest = whole % 60;
+      function pad(value) { return value < 10 ? '0' + value : String(value); }
+      if (hours > 0) return hours + ':' + pad(minutes) + ':' + pad(rest);
+      return pad(minutes) + ':' + pad(rest);
+    }
+
+    function drawProgress() {
+      var duration = video.duration;
+      var current = video.currentTime;
+      var played = duration > 0 ? (current / duration) * 100 : 0;
+      if (played < 0) played = 0;
+      if (played > 100) played = 100;
+      playedBar.style.width = played + '%';
+      progressHandle.style.left = played + '%';
+      progress.setAttribute('aria-valuenow', Math.round(played));
+
+      var buffered = 0;
+      try {
+        if (video.buffered && video.buffered.length) {
+          buffered = (video.buffered.end(video.buffered.length - 1) / duration) * 100;
+          if (isNaN(buffered)) buffered = 0;
+        }
+      } catch (err) {
+        buffered = 0;
+      }
+      if (buffered < played) buffered = played;
+      if (buffered > 100) buffered = 100;
+      bufferedBar.style.width = buffered + '%';
+
+      timeEl.textContent = formatTime(current) + ' / ' + formatTime(duration);
+    }
+
+    // A click on the bar moves the picture to that point.
+    function seekFromEvent(event) {
+      var duration = video.duration;
+      if (!duration || isNaN(duration) || duration <= 0) return;
+      var box = progress.getBoundingClientRect();
+      if (!box.width) return;
+      var x = event.clientX - box.left;
+      if (x < 0) x = 0;
+      if (x > box.width) x = box.width;
+      var target = (x / box.width) * duration;
+      try {
+        video.currentTime = target;
+      } catch (err) {
+        return;
+      }
+      drawProgress();
+    }
+
+    function togglePlay() {
+      if (video.paused) {
+        var promise = video.play();
+        if (promise && promise.catch) {
+          promise.catch(function () {
+            video.muted = true;
+            var retry = video.play();
+            if (retry && retry.catch) retry.catch(function () {});
+          });
+        }
+        playPause.innerHTML = '&#10073;&#10073;';
+        playPause.title = 'Pausar';
+        document.body.className = 'tv-playing';
+      } else {
+        video.pause();
+        playPause.innerHTML = '&#9654;';
+        playPause.title = 'Reproduzir';
+        document.body.className = 'tv-paused';
+      }
+      showControls();
+    }
+
+    function seekBy(seconds) {
+      var target = video.currentTime + seconds;
+      if (target < 0) target = 0;
+      try {
+        video.currentTime = target;
+      } catch (err) {
+        return;
+      }
+      drawProgress();
+      showControls();
+    }
+
+    function changeVolume(delta) {
+      var level = video.volume + delta;
+      if (level < 0) level = 0;
+      if (level > 1) level = 1;
+      video.volume = level;
+      if (level > 0) video.muted = false;
+      var percent = Math.round(level * 100);
+      volumeLabel.textContent = 'Volume ' + percent + '%';
+      volumeOsd.textContent = 'Volume ' + percent + '%';
+      document.body.className = document.body.className.replace(/tv-volume-osd-on/, '').trim();
+      document.body.className += ' tv-volume-osd-on';
+      if (volumeTimer) clearTimeout(volumeTimer);
+      volumeTimer = setTimeout(function () {
+        document.body.className = document.body.className.replace(/tv-volume-osd-on/, '').trim();
+      }, 1600);
+      showControls();
+    }
+
+    function goFullscreen() {
+      if (video.requestFullscreen) {
+        video.requestFullscreen();
+      } else if (video.webkitRequestFullscreen) {
+        video.webkitRequestFullscreen();
+      }
+    }
+
+    // The title is loaded while the viewer is still looking at the cover.
+    //
+    // The manifest and the first segments travel to the television while the
+    // page is still on screen, so the press of OK finds a buffer that is
+    // ready and the picture comes up without another trip to the upstream
+    // host. The load is the slow part; the press is not.
+    var hls = null;
+    var workerEnabled = true;
+    var started = false;
+    var manifestReady = false;
+
+    function attemptPlay() {
+      try {
+        var promise = video.play();
+        if (promise && promise.catch) {
+          promise.catch(function () {
+            video.muted = true;
+            var retry = video.play();
+            if (retry && retry.catch) retry.catch(function () {});
+          });
+        }
+      } catch (err) {
+        setStatus('Toque para reproduzir');
+      }
+    }
+
+    function onFatal(data) {
+      if (!data || !data.fatal) return;
+      // The transmuxing runs in a worker thread, so the picture does not wait
+      // for it. If the worker does not run on this browser, the demuxer goes
+      // back onto the main thread and the title is loaded a second time.
+      if (data.event === 'demuxerWorker' && workerEnabled) {
+        workerEnabled = false;
+        loadSource(false);
+        return;
+      }
+      setStatus('Erro: ' + (data.details || data.type || 'desconhecido'));
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        hls.startLoad();
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        hls.recoverMediaError();
+      }
+    }
+
+    function loadSource(useWorker) {
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      manifestReady = false;
+      hls = new Hls({ enableWorker: useWorker });
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        manifestReady = true;
+        setStatus('Pronto');
+      });
+      hls.on(Hls.Events.ERROR, function (event, data) {
+        // The manifest itself is what fails when the page and the gateway
+        // are on different hosts and the page does not know where the
+        // gateway is. CINE_API in js/config.js is the piece that says.
+        if (data.fatal && (data.details === 'manifestLoadError' ||
+            data.details === 'manifestParsingError')) {
+          setStatus('Gateway nao configurado neste endereco');
+          return;
+        }
+        onFatal(data);
+      });
+      hls.attachMedia(video);
+      hls.loadSource(sourceUrl);
+    }
+
+    function start() {
+      if (started) return;
+      started = true;
+      overlay.style.display = 'none';
+      setStatus(manifestReady ? 'Pronto' : 'Carregando...');
+
+      if (!hls) {
+        // No MSE: hand the playlist to the browser as a plain source.
+        video.src = sourceUrl;
+        video.load();
+        setStatus('Modo nativo');
+      }
+
+      // The fullscreen request has to come out of the gesture itself. Asked
+      // for later, the browser refuses it and the picture stays in a window.
+      goFullscreen();
+      attemptPlay();
+
+      // The browser only lets a video start from a real user gesture, and a
+      // click on a remote control key does not always count as one. The play
+      // attempt is repeated on the first touch and on the first key press, so
+      // the video starts whichever way the viewer triggers it.
+      video.addEventListener('touchstart', attemptPlay, false);
+      document.addEventListener('keydown', attemptPlay, false);
+    }
+
+    document.getElementById('playBtn').addEventListener('click', function (e) {
+      // The button sits inside the overlay and the overlay has a click
+      // handler of its own. Without this the start runs twice: two Hls
+      // instances pull the same manifest, one of them is thrown away
+      // half-way, and the player sits there waiting.
+      e.stopPropagation();
+      start();
+    });
+    overlay.addEventListener('click', start);
+
+    // The load starts as soon as the page is up. The press of OK then finds
+    // the title already in the buffer.
+    if (window.Hls && Hls.isSupported()) {
+      loadSource(workerEnabled);
+    }
+    video.addEventListener('error', function () {
+      setStatus('Nao foi possivel reproduzir');
+    });
+
+    // A click on the picture brings the controls out. It never pauses: the
+    // bar is there to be used, and the play/pause button on it does that.
+    // The handler sits on the video, and the wrapper is left alone so the
+    // click is not handled twice.
+    video.addEventListener('click', function () {
+      showControls();
+    });
+
+    playPause.addEventListener('click', function (e) {
+      e.stopPropagation();
+      togglePlay();
+    });
+
+    progress.addEventListener('click', function (e) {
+      e.stopPropagation();
+      seekFromEvent(e);
+    });
+
+    // The remote can drive the progress bar too: the left and right arrows
+    // move through the title, and the progress handle follows.
+    progress.addEventListener('keydown', function (e) {
+      var key = e.keyCode || e.which;
+      if (key === 37) { seekBy(-10); e.preventDefault(); }
+      if (key === 39) { seekBy(10); e.preventDefault(); }
+    });
+
+    // The picture is left alone while it plays. The controls come back on
+    // any key press or mouse movement and fade out again on their own.
+    video.addEventListener('play', hideControls, false);
+    video.addEventListener('pause', showControls, false);
+    video.addEventListener('ended', showControls, false);
+    video.addEventListener('timeupdate', drawProgress, false);
+    video.addEventListener('progress', drawProgress, false);
+    video.addEventListener('loadedmetadata', drawProgress, false);
+    document.addEventListener('keydown', showControls, false);
+    document.addEventListener('mousemove', showControls, false);
+
+    nextButton.addEventListener('click', function (e) {
+      e.preventDefault();
+      goNextEpisode();
+    });
+
+    episodesToggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (episodePanel.hidden) {
+        episodePanel.hidden = false;
+        episodesToggle.textContent = 'Fechar';
+      } else {
+        episodePanel.hidden = true;
+        episodesToggle.textContent = 'Episodios';
+      }
+      showControls();
+    });
+
+    // The remote control's keys. Red and Back leave the player, green goes
+    // back to the catalog, the arrows seek and change volume, OK starts.
+    document.addEventListener('keydown', function (e) {
+      var key = e.keyCode || e.which;
+      if (key === 403 || key === 461 || key === 27) {   // Vermelho / Back
+        window.location.href = './';
+        return;
+      }
+      if (key === 404) {                                // Verde
+        window.location.href = './';
+        return;
+      }
+      if (key === 405) {                                // Amarelo: proximo episodio
+        goNextEpisode();
+        return;
+      }
+      if (key === 406) {                                // Azul: episodios
+        episodesToggle.click();
+        return;
+      }
+      if (key === 13) {                                 // OK
+        if (overlay.style.display !== 'none') {
+          start();
+        } else if (document.body.className.indexOf('tv-controls') !== -1) {
+          // With the controls out, OK pauses and resumes.
+          togglePlay();
+        } else {
+          // Otherwise OK brings the controls out.
+          showControls();
+        }
+        return;
+      }
+      if (key === 37) seekBy(-10);                     // Esquerda
+      if (key === 39) seekBy(10);                      // Direita
+      if (key === 38) changeVolume(0.1);               // Cima
+      if (key === 40) changeVolume(-0.1);              // Baixo
+    });
+
+    // Season and episode list for series, so the remote can pick one.
+    //
+    // episodes.json holds, per title, the number of episodes of each season.
+    // The same file also tells the "next episode" button where to go: one
+    // episode ahead, or the first episode of the next season when the current
+    // one is the last of its season.
+    var episodeCounts = null;
+
+    function seasonEpisodeCount(number) {
+      if (!episodeCounts) return 0;
+      return Number(episodeCounts[number - 1]) || 0;
+    }
+
+    function knownSeasons() {
+      var seasons = [];
+      if (episodeCounts) {
+        for (var i = 0; i < episodeCounts.length; i++) {
+          if (episodeCounts[i] > 0) seasons.push(i + 1);
+        }
+      }
+      if (seasons.length) return seasons;
+      var fallback = [];
+      var total = Number(params.seasons) || 1;
+      for (var s = 1; s <= Math.max(1, total); s++) fallback.push(s);
+      return fallback;
+    }
+
+    function nextEpisodeTarget() {
+      if (type === 'movie') return null;
+      var count = seasonEpisodeCount(Number(season));
+      if (!count) {
+        return Number(episode) < 999 ? { season: season, episode: Number(episode) + 1 } : null;
+      }
+      if (Number(episode) < count) {
+        return { season: season, episode: Number(episode) + 1 };
+      }
+      // Last episode of the season: roll over to the next one.
+      var seasons = knownSeasons();
+      var position = seasons.indexOf(Number(season));
+      var nextSeason = position >= 0 ? seasons[position + 1] : 0;
+      if (!nextSeason) return null;
+      return { season: nextSeason, episode: 1 };
+    }
+
+    function goNextEpisode() {
+      var target = nextEpisodeTarget();
+      if (!target) {
+        setStatus('Ultimo episodio');
+        return;
+      }
+      window.location.href = 'player.html?ty=tv&title=' + encodeURIComponent(title) +
+        '&tm=' + encodeURIComponent(tm) + '&se=' + target.season + '&ep=' + target.episode;
+    }
+
+    function updateNextButton() {
+      if (type === 'movie') {
+        nextButton.hidden = true;
+        episodesToggle.hidden = true;
+        return;
+      }
+      nextButton.hidden = false;
+      episodesToggle.hidden = false;
+      var target = nextEpisodeTarget();
+      nextButton.textContent = target
+        ? ('Proximo episodio (S' + target.season + 'E' + target.episode + ')')
+        : 'Ultimo episodio';
+    }
+
+    if (type !== 'movie' && tm) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'data/episodes.json', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        var counts = null;
+        if (xhr.status === 200) {
+          try {
+            counts = (JSON.parse(xhr.responseText).items || {})[tm];
+          } catch (err) {
+            counts = null;
+          }
+        }
+        if (!counts) {
+          updateNextButton();
+          return;
+        }
+        episodeCounts = counts;
+        var html = '';
+        for (var s = 1; s <= counts.length; s++) {
+          for (var ep = 1; ep <= counts[s - 1]; ep++) {
+            var isCurrent = (String(s) === String(season) && String(ep) === String(episode));
+            html += '<a class="' + (isCurrent ? 'current' : '') + '" href="player.html?ty=tv&title=' +
+              encodeURIComponent(title) + '&tm=' + encodeURIComponent(tm) + '&se=' + s + '&ep=' + ep + '">S' +
+              s + 'E' + ep + '</a>';
+          }
+        }
+        episodePanel.innerHTML = html;
+        updateNextButton();
+      };
+      xhr.send();
+    } else {
+      updateNextButton();
+    }
+  })();
+  </script>
+</body>
+</html>
