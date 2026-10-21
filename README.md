@@ -52,21 +52,73 @@ porta e tenta o manifesto de novo.
 | | GitHub Pages | GitHub Actions | Codespaces |
 |---|---|---|---|
 | site estatico | sim | - | sim |
-| processo vivo com URL publico | nao | nao (janelas de 5 em 5 min) | sim, e dorme |
-| custo | zero | zero | ~0,18 USD/h |
+| processo vivo com URL publico | nao | nao (janelas de 5 em 5 min) | sim, com a porta em Public |
+| custo | zero | zero | 120 core-horas por mes na conta gratuita |
 
 O gateway precisa de um processo vivo: a playlist e assinada e vale uns 30
 minutos, e o remux para MPEG-TS acontece no momento do play. O GitHub nao
-tem servidor HTTP publico que fique de pe. O que o GitHub faz e o painel:
-o repositorio guarda o site, o Pages publica, e a Action envia o site e o
-gateway para a maquina e acorda ela de 20 em 20 minutos.
+tem servidor HTTP publico que fique de pe, entao o gateway vai para uma
+maquina - e o GitHub continua sendo o painel.
 
-Para o gateway, o host e o pedaco que precisa de IP publico:
+### Por que o video nao cabe no Pages
+
+Medido nesta maquina, contra o host de stream:
+
+* a pagina do player (`v2.watchplay.shop`) **nao manda** `Access-Control-
+  Allow-Origin` - o navegador do Pages nao consegue ler dela, e sem ler
+  ela nao ha como saber a URL assinada do titulo;
+* a playlist do CDN **manda** `Access-Control-Allow-Origin: *` e serve
+  CMAF (`EXT-X-MAP` + segmentos `.js`);
+* a TV nao decodifica CMAF: ela precisa de MPEG-TS, e quem faz o remux e o
+  `ffmpeg` dentro do gateway.
+
+Ou seja: falta um processo de verdade. Ele pode ser um codespace ou uma
+maquina qualquer.
+
+### O caminho Codespaces (GitHub de verdade)
+
+O container ja esta pronto no repositorio: `.devcontainer/devcontainer.json`
+sobe o gateway com ffmpeg dentro do codespace e deixa a porta 8730 no ar.
+
+```bash
+./deploy/codespace.sh
+```
+
+O script cria o codespace, espera o gateway subir e mostra o endereco
+`https://<codespace>-8730.app.github.dev`. A porta nasce privada: e preciso
+um clique em
+
+```
+https://github.com/codespaces/<codespace>   ->  aba Ports  ->  8730  ->  Public
+```
+
+(essa conta do GitHub tem o login por senha desativado, com passkey, e a
+API de portas nao existe na API publica - o clique e humano mesmo). Depois
+disso o player aponta para o endereco:
+
+```bash
+python3 deploy/set_api.py --host <codespace>-8730.app.github.dev
+```
+
+O codespace dorme depois de 30 minutos parado e gasta das 120 core-horas
+mensais da conta gratuita. Para TV de uso diario, uma maquina de 4 EUR e
+melhor negocio.
+
+### O caminho de verdade (maquina com IP publico)
 
 * **Oracle Cloud Always Free** - 1 VM ARM de graca, 24/7, IP publico.
 * **VPS de 4 EUR/mes** (Hetzner, Contabo) - o mais simples.
-* **Codespaces** - o unico "GitHub de verdade" que roda o gateway, mas e
-  pago e a URL muda quando o codespace e renomeado. Serve para teste.
+* O GitHub continua sendo o painel: a Action envia o site e o gateway para
+  a maquina, e o cron da caixa publica o catalogo.
+
+```bash
+sudo ./deploy/install.sh --domain tv.exemplo.com --email voce@exemplo.com
+```
+
+E os segredos no GitHub (Settings -> Secrets and variables -> Actions):
+`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_PATH`, `PUBLIC_BASE`,
+`WAKE_URL`. A partir dai o `git push` publica o site e envia o gateway
+para a maquina.
 
 ## O que a copia na nuvem mudou
 
