@@ -1,0 +1,44 @@
+=== codespace start 2026-10-21T01:46:18Z ===
+repo: /workspaces/cinestream-tv
+user: vscode
+python: /usr/bin/python3
+ffmpeg: AUSENTE
+rsync: /usr/bin/rsync
+curl: /usr/bin/curl
+--- ffmpeg
+instalando ffmpeg
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.11) ...
+Processing triggers for libgdk-pixbuf-2.0-0:amd64 (2.42.8+dfsg-1ubuntu0.5) ...
+/usr/bin/ffmpeg
+--- site
+total 92
+drwxrwxrwx 8 vscode vscode  4096 Oct 21 01:45 .
+drwxr-xr-x 5 vscode vscode  4096 Oct 21 01:47 ..
+-rw-rw-rw- 1 vscode vscode     0 Oct 21 01:45 .nojekyll
+-rw-rw-rw- 1 vscode vscode  5046 Oct 21 01:45 README.md
+drwxrwxrwx 2 vscode vscode  4096 Oct 21 01:45 assets
+drwxrwxrwx 2 vscode vscode  4096 Oct 21 01:45 css
+drwxrwxrwx 2 vscode vscode  4096 Oct 21 01:45 data
+drwxrwxrwx 2 vscode vscode  4096 Oct 21 01:45 deploy
+-rw-rw-rw- 1 vscode vscode 10925 Oct 21 01:45 index.html
+drwxrwxrwx 2 vscode vscode  4096 Oct 21 01:45 js
+-rw-rw-rw- 1 vscode vscode 21605 Oct 21 01:45 player.html
+--- gateway
+export RESOLVER_HOME=/home/vscode/cinestream
+export RESOLVER_SITE_DIR=/home/vscode/cinestream/site
+export RESOLVER_CATALOG_DIR=/home/vscode/cinestream/site/data
+export RESOLVER_POSTER_DIR=/home/vscode/cinestream/posters
+export RESOLVER_M3U_PATH=/home/vscode/cinestream/cinestream.m3u
+export RESOLVER_FFMPEG=/usr/bin/ffmpeg
+export RESOLVER_HOST=0.0.0.0
+export RESOLVER_PORT=8730
+export RESOLVER_MODE=proxy
+export RESOLVER_CACHE_TTL=300
+export RESOLVER_CORS_ORIGIN=*
+--- subindo
+resolver log:
+2026-10-21 01:47:22 resolver listening on 0.0.0.0:8730 mode=proxy
+healthz:
+200
+{"status": "ok", "mode": "proxy", "public_base": "http://10.0.13.214:8730", "lan_ip": "10.0.13.214", "cached": 0, "stats": {"hits": 0, "misses": 0, "errors": 0, "proxied": 0}, "now": 1792547246}
