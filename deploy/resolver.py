@@ -208,6 +208,8 @@ def public_base_for(host):
         else:
             value = value.split(":")[0] if value.count(":") == 1 else value
         if value and value not in ("localhost", "::1") and not value.startswith("127."):
+            if value.endswith(".app.github.dev"):
+                return "https://%s" % value
             return "http://%s:%d" % (value, PORT)
     return default_public_base()
 

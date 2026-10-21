@@ -73,6 +73,17 @@ REPLACEMENTS = [
         '    if host:\n'
         '        value = host.split(",")[0].strip()',
     ),
+    # 2b. A Codespaces host: the port is forwarded under a name like
+    # <codespace>-8730.app.github.dev and the answer is https, without a
+    # port. The old rule would build http://<name>-8730.app.github.dev:8730.
+    (
+        '        if value and value not in ("localhost", "::1") and not value.startswith("127."):\n'
+        '            return "http://%s:%d" % (value, PORT)',
+        '        if value and value not in ("localhost", "::1") and not value.startswith("127."):\n'
+        '            if value.endswith(".app.github.dev"):\n'
+        '                return "https://%s" % value\n'
+        '            return "http://%s:%d" % (value, PORT)',
+    ),
     # 3. CORS.
     (
         '        self.send_response(code)\n'

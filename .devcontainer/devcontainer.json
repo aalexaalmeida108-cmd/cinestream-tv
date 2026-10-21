@@ -1,0 +1,15 @@
+{
+  "name": "CineStream TV",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "onCreateCommand": "echo 'CineStream TV - gateway'",
+  "postCreateCommand": "bash .devcontainer/start.sh",
+  "remoteUser": "codespace",
+  "forwardPorts": [8730],
+  "portsAttributes": {
+    "8730": {
+      "label": "CineStream TV",
+      "onAutoForward": "public",
+      "requireLocalPort": true
+    }
+  }
+}
